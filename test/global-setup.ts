@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { execSync } from 'node:child_process';
 
 export const ADMIN_URL =
-  process.env.E2E_ADMIN_URL ?? 'postgresql://postgres:postgres@localhost:5432/postgres';
+  process.env.E2E_ADMIN_URL ?? 'postgresql://postgres:postgres@127.0.0.1:5432/postgres';
 
 export async function withAdmin(sql: string) {
   const admin = new PrismaClient({ datasources: { db: { url: ADMIN_URL } } });

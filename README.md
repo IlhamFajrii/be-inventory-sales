@@ -97,6 +97,8 @@ npx newman run postman/inventory-sales.postman_collection.json -e postman/local.
 - Harga dibaca di dalam transaksi tetapi tanpa penguncian baris, jadi perubahan harga yang bersamaan dengan penjualan bisa memakai harga lama.
 - Belum ada pembatasan percobaan login (rate limiting) dan header keamanan (helmet). Untuk deployment publik, pasang di depan API (reverse proxy) atau tambahkan sendiri.
 - `/docs` terbuka tanpa autentikasi.
+- `npm audit --omit=dev` melaporkan 4 temuan severity tinggi, semuanya pada rantai CLI Prisma 6 (`prisma` → `@prisma/config` → `effect`, `deepmerge-ts`). Itu berjalan saat build dan `migrate deploy` dengan konfigurasi milik sendiri, bukan pada request HTTP, dan `@prisma/client` tidak terdampak. Perbaikannya hanya lewat Prisma 7 (perubahan besar), belum dikerjakan.
+- Aplikasi menolak start dengan `JWT_SECRET` contoh dari repo ini, kecuali `SEED_DEMO=true`. Port database di Compose hanya terikat ke `127.0.0.1`.
 - Belum ada pagination pada `GET /products`.
 - Belum ada modul manajemen pengguna. Akun dibuat lewat seed.
 - Di luar lingkup: payment gateway, multi-tenant, realtime, ekspor PDF.
