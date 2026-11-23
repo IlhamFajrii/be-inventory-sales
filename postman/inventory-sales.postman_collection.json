@@ -1,0 +1,145 @@
+{
+  "info": {
+    "name": "Inventory & Sales API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Login admin",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/auth/login",
+        "body": { "mode": "raw", "raw": "{\"email\":\"{{adminEmail}}\",\"password\":\"{{adminPassword}}\"}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('200 dan token', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().accessToken).to.be.a('string'); });",
+        "pm.collectionVariables.set('adminToken', pm.response.json().accessToken);"
+      ] } }]
+    },
+    {
+      "name": "2. Login staf",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/auth/login",
+        "body": { "mode": "raw", "raw": "{\"email\":\"{{stafEmail}}\",\"password\":\"{{stafPassword}}\"}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('200 dan token', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().accessToken).to.be.a('string'); });",
+        "pm.collectionVariables.set('stafToken', pm.response.json().accessToken);"
+      ] } }]
+    },
+    {
+      "name": "3. Login salah -> 401",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/auth/login",
+        "body": { "mode": "raw", "raw": "{\"email\":\"{{adminEmail}}\",\"password\":\"salah-total\"}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('401 dengan format error konsisten', () => { pm.response.to.have.status(401); const b = pm.response.json(); pm.expect(b).to.have.keys('statusCode', 'error', 'message'); pm.expect(b.statusCode).to.eql(401); });"
+      ] } }]
+    },
+    {
+      "name": "4. Staf buat produk -> 403",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{stafToken}}" }],
+        "url": "{{baseUrl}}/products",
+        "body": { "mode": "raw", "raw": "{\"sku\":\"STAF-{{$timestamp}}\",\"name\":\"Tidak boleh\",\"price\":1000,\"stock\":1}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('403', () => pm.response.to.have.status(403));"
+      ] } }]
+    },
+    {
+      "name": "5. Admin buat produk",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+        "url": "{{baseUrl}}/products",
+        "body": { "mode": "raw", "raw": "{\"sku\":\"PM-{{$timestamp}}\",\"name\":\"Produk Postman\",\"price\":25000,\"stock\":5}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('201', () => pm.response.to.have.status(201));",
+        "pm.collectionVariables.set('productId', pm.response.json().id);"
+      ] } }]
+    },
+    {
+      "name": "6. Input tidak valid -> 400 per field",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+        "url": "{{baseUrl}}/products",
+        "body": { "mode": "raw", "raw": "{\"sku\":\"\",\"name\":\"A\",\"price\":-1,\"stock\":1.5}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('400 dengan pesan per field', () => { pm.response.to.have.status(400); const m = pm.response.json().message; pm.expect(m).to.be.an('array'); ['sku', 'price', 'stock'].forEach(f => pm.expect(m.some(x => x.startsWith(f))).to.eql(true)); });"
+      ] } }]
+    },
+    {
+      "name": "7. Staf jual 2 unit -> 201",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{stafToken}}" }],
+        "url": "{{baseUrl}}/sales",
+        "body": { "mode": "raw", "raw": "{\"items\":[{\"productId\":{{productId}},\"quantity\":2}]}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('201 dan total 50000', () => { pm.response.to.have.status(201); pm.expect(Number(pm.response.json().total)).to.eql(50000); });"
+      ] } }]
+    },
+    {
+      "name": "8. Jual melebihi stok -> 409",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{stafToken}}" }],
+        "url": "{{baseUrl}}/sales",
+        "body": { "mode": "raw", "raw": "{\"items\":[{\"productId\":{{productId}},\"quantity\":100}]}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('409', () => pm.response.to.have.status(409));"
+      ] } }]
+    },
+    {
+      "name": "9. Stok tinggal 3",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+        "url": "{{baseUrl}}/products/{{productId}}"
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('stok 3 (penjualan gagal tidak mengubah stok)', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().stock).to.eql(3); });"
+      ] } }]
+    },
+    {
+      "name": "10. Laporan penjualan per hari",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+        "url": "{{baseUrl}}/reports/daily-sales"
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('200 dan array', () => { pm.response.to.have.status(200); pm.expect(pm.response.json()).to.be.an('array'); });"
+      ] } }]
+    },
+    {
+      "name": "11. Laporan stok menipis",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+        "url": "{{baseUrl}}/reports/low-stock"
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('200 dan array', () => { pm.response.to.have.status(200); pm.expect(pm.response.json()).to.be.an('array'); });"
+      ] } }]
+    }
+  ],
+  "variable": [
+    { "key": "adminToken", "value": "" },
+    { "key": "stafToken", "value": "" },
+    { "key": "productId", "value": "" }
+  ]
+}

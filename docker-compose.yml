@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: inventory
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d inventory"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/inventory
+      # Nilai demo palsu. Ganti lewat variabel lingkungan untuk deployment nyata.
+      JWT_SECRET: ${JWT_SECRET:-demo-only-secret-ganti-di-deployment-0123456789}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+      # Compose ini untuk demo lokal, jadi akun dan data demo di-seed. Matikan di deployment nyata.
+      SEED_DEMO: ${SEED_DEMO:-true}
+      PORT: 3000
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
