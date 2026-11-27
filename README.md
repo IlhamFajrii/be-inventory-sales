@@ -1,8 +1,28 @@
 # Inventory & Sales API
 
-API untuk mengelola produk, stok, dan penjualan. Fokusnya logika bisnis, bukan hanya CRUD: penjualan dan pengurangan stok terjadi dalam satu transaksi database.
+![Node.js](https://img.shields.io/badge/Node.js-22-5FA04E?style=flat-square&logo=nodedotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5%20strict-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![NestJS](https://img.shields.io/badge/NestJS-11-E0234E?style=flat-square&logo=nestjs&logoColor=white)
+![Prisma](https://img.shields.io/badge/Prisma-6-2D3748?style=flat-square&logo=prisma&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql&logoColor=white)
+![JWT](https://img.shields.io/badge/Auth-JWT-000000?style=flat-square&logo=jsonwebtokens&logoColor=white)
+![Swagger](https://img.shields.io/badge/Docs-Swagger-85EA2D?style=flat-square&logo=swagger&logoColor=black)
+![Jest](https://img.shields.io/badge/Test-Jest%2030-C21325?style=flat-square&logo=jest&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 
-Stack: NestJS, TypeScript (strict), Prisma, PostgreSQL, JWT, Docker Compose. Status: `Active` (belum ada pengguna nyata).
+REST API untuk mengelola produk, stok, dan penjualan. Proyek ini berfokus pada logika bisnis di luar CRUD: pencatatan penjualan dan pengurangan stok berjalan dalam satu transaksi database, sehingga stok tetap konsisten saat ada permintaan bersamaan.
+
+Status: `Active`, belum ada pengguna nyata.
+
+## Fitur utama
+
+- Penjualan atomik yang aman terhadap permintaan bersamaan.
+- Autentikasi JWT dengan peran admin dan staf.
+- Laporan penjualan harian dan stok menipis.
+- Validasi input per field dengan format error yang seragam.
+- Dokumentasi interaktif melalui Swagger.
+- Unit test, test end-to-end, dan koleksi Postman.
 
 ## Menjalankan
 
@@ -12,10 +32,14 @@ Prasyarat: Docker dengan Compose.
 docker compose up --build
 ```
 
-- API: http://localhost:3000
-- Swagger: http://localhost:3000/docs
+| Layanan | URL |
+|---|---|
+| API | http://localhost:3000 |
+| Swagger | http://localhost:3000/docs |
 
-Saat start, container API menjalankan migrasi. Seed akun dan data demo (idempoten, tidak mengembalikan stok yang sudah berubah) hanya berjalan bila `SEED_DEMO=true`. `docker-compose.yml` menyalakannya untuk demo lokal, sedangkan image-nya sendiri **tidak** men-seed apa pun secara bawaan. Di deployment nyata jangan nyalakan `SEED_DEMO`, karena kredensial demo di bawah bersifat publik.
+Saat start, container API menjalankan migrasi database. Seed akun dan data demo hanya berjalan bila `SEED_DEMO=true`. Seed bersifat idempoten dan tidak mengembalikan stok yang sudah berubah.
+
+`docker-compose.yml` menyalakan `SEED_DEMO` untuk demo lokal, sedangkan image secara bawaan tidak melakukan seed. Jangan nyalakan `SEED_DEMO` pada deployment nyata karena kredensial demo di bawah bersifat publik.
 
 ### Akun demo (fiktif)
 
@@ -24,32 +48,58 @@ Saat start, container API menjalankan migrasi. Seed akun dan data demo (idempote
 | Admin | `admin@demo.test` | `Admin123!demo` |
 | Staf | `staf@demo.test` | `Staf123!demo` |
 
-Login lewat `POST /auth/login`, lalu kirim `Authorization: Bearer <accessToken>`.
+Login melalui `POST /auth/login`, lalu kirim header `Authorization: Bearer <accessToken>`.
 
 ## Endpoint
 
-| Method | Path | Peran |
+| Method | Path | Akses |
 |---|---|---|
 | POST | `/auth/login` | publik |
 | GET | `/products`, `/products/:id` | admin, staf |
-| POST, PATCH, DELETE | `/products`, `/products/:id` | admin |
+| POST | `/products` | admin |
+| PATCH, DELETE | `/products/:id` | admin |
 | POST | `/sales` | admin, staf |
 | GET | `/reports/daily-sales?from=YYYY-MM-DD&to=YYYY-MM-DD` | admin |
 | GET | `/reports/low-stock` | admin |
 
-Semua error berbentuk `{ "statusCode": 409, "error": "Conflict", "message": "..." }`. Error validasi memuat `message` berupa daftar, satu entri per field.
+Semua error menggunakan format yang sama:
 
-Catatan perilaku:
-- **Penjualan atomik.** Stok dikurangi dengan `UPDATE ... WHERE stock >= qty` di dalam `prisma.$transaction`. Satu item kurang stok membatalkan seluruh penjualan (409). Dua penjualan bersamaan atas stok terakhir menghasilkan tepat satu keberhasilan.
-- **Laporan** memotong tanggal di UTC. `to` bersifat inklusif. Tanpa parameter, rentangnya 30 hari terakhir. Stok menipis berarti `stock <= minStock`.
-- **Token.** Hanya access token (default 15 menit), tanpa refresh token. Refresh token ada di proyek starter kit terpisah.
-- Nilai uang dikembalikan sebagai string desimal (`"40000"`) agar tidak kehilangan presisi. Harga maksimum 1.000.000.000, batas yang menjamin total penjualan terbesar tetap muat di kolom.
-- **Peran dibaca dari database di setiap request**, bukan dari token. User yang dihapus atau diturunkan perannya langsung kehilangan akses. Harganya satu query ringan per request.
-- Body dengan nilai `null` ditolak 400 per field. Id yang bukan integer 32-bit positif ditolak 400.
+```json
+{ "statusCode": 409, "error": "Conflict", "message": "..." }
+```
+
+Pada error validasi, `message` berupa daftar dengan satu entri per field.
+
+## Perilaku sistem
+
+### Penjualan
+
+Stok dikurangi dengan `UPDATE ... WHERE stock >= qty` di dalam `prisma.$transaction`. Jika stok salah satu item tidak cukup, seluruh penjualan dibatalkan dengan status 409. Dari dua penjualan bersamaan atas stok terakhir, tepat satu yang berhasil.
+
+### Laporan
+
+- Tanggal dipotong menurut UTC.
+- Parameter `to` bersifat inklusif.
+- Tanpa parameter, rentangnya 30 hari terakhir.
+- Stok dianggap menipis bila `stock <= minStock`.
+
+### Autentikasi dan keamanan
+
+- API hanya menerbitkan access token (bawaan 15 menit) tanpa refresh token. Refresh token tersedia di proyek starter kit terpisah.
+- Peran dibaca dari database pada setiap request, bukan dari token. User yang dihapus atau diturunkan perannya langsung kehilangan akses, dengan biaya satu query ringan per request.
+- Aplikasi menolak start dengan `JWT_SECRET` contoh dari repositori ini, kecuali `SEED_DEMO=true`.
+- Port database di Compose hanya terikat ke `127.0.0.1`.
+
+### Data dan validasi
+
+- Nilai uang dikembalikan sebagai string desimal (`"40000"`) agar presisinya terjaga.
+- Harga maksimum 1.000.000.000. Batas ini menjamin total penjualan terbesar tetap muat di kolom database.
+- Body dengan nilai `null` ditolak (400) per field.
+- Id yang bukan integer 32-bit positif ditolak (400).
 
 ## Variabel lingkungan
 
-Salin `.env.example` ke `.env` untuk menjalankan tanpa Docker. Aplikasi gagal start bila variabel wajib hilang.
+Untuk menjalankan tanpa Docker, salin `.env.example` ke `.env`, lalu ganti `JWT_SECRET` dengan string acak milik sendiri. Aplikasi gagal start bila variabel wajib hilang.
 
 | Variabel | Wajib | Keterangan |
 |---|---|---|
@@ -57,11 +107,11 @@ Salin `.env.example` ke `.env` untuk menjalankan tanpa Docker. Aplikasi gagal st
 | `JWT_SECRET` | ya | Minimal 32 karakter |
 | `JWT_EXPIRES_IN` | tidak | Bawaan `15m` |
 | `PORT` | tidak | Bawaan `3000` |
-| `SEED_DEMO` | tidak | `true` = seed akun dan data demo saat container start. Bawaan image: mati |
+| `SEED_DEMO` | tidak | `true` untuk seed akun dan data demo saat container start. Bawaan image: mati |
 
-`JWT_EXPIRES_IN` harus berbentuk `15m`, `1h`, atau `7d`. Nilai yang salah bentuk membuat aplikasi gagal start, bukan gagal saat login.
+`JWT_EXPIRES_IN` harus berbentuk durasi seperti `15m`, `1h`, atau `7d`. Nilai yang salah bentuk membuat aplikasi gagal saat start, sebelum sempat dipakai untuk login.
 
-Compose memakai nilai demo palsu untuk `JWT_SECRET`. Untuk deployment nyata, setel `JWT_SECRET` sendiri.
+Compose memakai nilai demo palsu untuk `JWT_SECRET`. Pada deployment nyata, setel `JWT_SECRET` sendiri.
 
 ## Pengembangan
 
@@ -80,13 +130,23 @@ npm run test       # unit
 npm run test:e2e   # e2e, butuh database dari `docker compose up -d db`
 ```
 
-E2E membuat database baru yang kosong di setiap run (`inventory_e2e_<timestamp>`), memigrasi dan men-seed-nya, lalu menghapusnya. Database dev tidak tersentuh. Ubah target dengan `E2E_ADMIN_URL`. Database itu sengaja disetel ke zona waktu `Asia/Jakarta` agar bug pemotongan hari di laporan langsung terlihat.
+Setiap run e2e membuat database kosong baru (`inventory_e2e_<timestamp>`), memigrasi dan men-seed database tersebut, lalu menghapusnya, sehingga database dev tidak tersentuh. Target dapat diubah dengan `E2E_ADMIN_URL`. Database test sengaja disetel ke zona waktu `Asia/Jakarta` agar bug pemotongan hari di laporan langsung terlihat.
 
-Yang diuji: login salah dan format error, peran (staf ditolak 403), peran dibaca ulang dari database (user dihapus atau diturunkan langsung ditolak), validasi per field termasuk `null` dan id di luar rentang, penjualan sukses, penolakan atomik (stok dan tabel penjualan tidak berubah), konkurensi (6 permintaan serentak atas stok 1, tepat satu berhasil), total penjualan terbesar yang mungkin, dan laporan yang dicocokkan dengan hitungan manual dari data seed.
+Cakupan pengujian:
+
+- Login salah dan format error.
+- Pembatasan peran (staf ditolak dengan 403).
+- Pembacaan ulang peran dari database (user yang dihapus atau diturunkan perannya langsung ditolak).
+- Validasi per field, termasuk `null` dan id di luar rentang.
+- Penjualan sukses.
+- Penolakan atomik (stok dan tabel penjualan tidak berubah).
+- Konkurensi: dari 6 permintaan serentak atas stok 1, tepat satu berhasil.
+- Total penjualan terbesar yang mungkin.
+- Laporan yang dicocokkan dengan hitungan manual dari data seed.
 
 ## Postman
 
-Koleksi dan environment ada di `postman/` (`local`, `demo`). Environment `demo` belum berisi URL dan password karena hosting belum diputuskan.
+Koleksi dan environment (`local`, `demo`) tersedia di folder `postman/`. Environment `demo` belum berisi URL dan password karena hosting belum diputuskan.
 
 ```bash
 npx newman run postman/inventory-sales.postman_collection.json -e postman/local.postman_environment.json
@@ -97,12 +157,11 @@ npx newman run postman/inventory-sales.postman_collection.json -e postman/local.
 - Harga dibaca di dalam transaksi tetapi tanpa penguncian baris, jadi perubahan harga yang bersamaan dengan penjualan bisa memakai harga lama.
 - Belum ada pembatasan percobaan login (rate limiting) dan header keamanan (helmet). Untuk deployment publik, pasang di depan API (reverse proxy) atau tambahkan sendiri.
 - `/docs` terbuka tanpa autentikasi.
-- `npm audit --omit=dev` melaporkan 4 temuan severity tinggi, semuanya pada rantai CLI Prisma 6 (`prisma` → `@prisma/config` → `effect`, `deepmerge-ts`). Itu berjalan saat build dan `migrate deploy` dengan konfigurasi milik sendiri, bukan pada request HTTP, dan `@prisma/client` tidak terdampak. Perbaikannya hanya lewat Prisma 7 (perubahan besar), belum dikerjakan.
-- Aplikasi menolak start dengan `JWT_SECRET` contoh dari repo ini, kecuali `SEED_DEMO=true`. Port database di Compose hanya terikat ke `127.0.0.1`.
+- `npm audit --omit=dev` melaporkan 4 temuan severity tinggi, semuanya pada rantai CLI Prisma 6 (`prisma` → `@prisma/config` → `effect`, `deepmerge-ts`). Rantai itu berjalan saat build dan `migrate deploy` dengan konfigurasi milik sendiri, tidak pada request HTTP, dan `@prisma/client` tidak terdampak. Perbaikannya hanya lewat Prisma 7 (perubahan besar) dan belum dikerjakan.
 - Belum ada pagination pada `GET /products`.
 - Belum ada modul manajemen pengguna. Akun dibuat lewat seed.
-- Di luar lingkup: payment gateway, multi-tenant, realtime, ekspor PDF.
+- Di luar lingkup: payment gateway, multi-tenant, realtime, dan ekspor PDF.
 
 ## Lisensi
 
-MIT, lihat `LICENSE`.
+MIT, lihat [`LICENSE`](LICENSE).
